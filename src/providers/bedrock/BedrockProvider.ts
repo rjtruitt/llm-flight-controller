@@ -16,6 +16,7 @@ import { CombinedRateLimiter, CombinedLimitConfig } from '../../core/limits/Comb
 import { AWSSSOAuth } from '../../auth/AWSSSOAuth';
 import { AWSAuthProvider } from '../../auth/AWSAuthProvider';
 import { IAuthProvider } from '../../auth/IAuthProvider';
+import { RateLimitError, AuthenticationError } from '../../core/errors/LLMError';
 
 export interface BedrockProviderConfig extends Omit<ModelConfig, 'auth'> {
     /** AWS Bedrock model ID (e.g., "us.anthropic.claude-sonnet-4-20250514-v1:0") */
@@ -165,7 +166,13 @@ export class BedrockProvider extends Model {
                     await this.rateLimiter.onThrottled(estimatedTokens.input + estimatedTokens.output);
                 }
 
-                throw new Error('Rate limit exceeded');
+                // Throw RateLimitError so Model.sendMessage() can retry
+                throw new RateLimitError(
+                    'Bedrock rate limit exceeded',
+                    { provider: 'bedrock', modelId: this.modelId },
+                    undefined, // No retryAfter from Bedrock (adaptive learning will handle it)
+                    error
+                );
             }
 
             if (errorName === 'ValidationException') {
@@ -176,7 +183,11 @@ export class BedrockProvider extends Model {
             }
 
             if (errorName === 'AccessDeniedException') {
-                throw new Error('Authentication failed: Access denied');
+                throw new AuthenticationError(
+                    'Access denied - check AWS credentials and model permissions',
+                    { provider: 'bedrock', modelId: this.modelId },
+                    error
+                );
             }
 
             if (errorName === 'ResourceNotFoundException') {
