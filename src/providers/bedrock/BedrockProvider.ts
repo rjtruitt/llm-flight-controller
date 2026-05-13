@@ -33,6 +33,9 @@ export interface BedrockProviderConfig extends Omit<ModelConfig, 'auth'> {
 
     /** Rate limit configuration (optional - learns from throttling if not provided) */
     rateLimits?: CombinedLimitConfig;
+
+    /** Shared rate limiter instance (optional - for coordinating multiple model instances) */
+    sharedRateLimiter?: CombinedRateLimiter;
 }
 
 /**
@@ -93,9 +96,13 @@ export class BedrockProvider extends Model {
         this.translator = new BedrockOpenAITranslator();
         this.modelId = config.modelId;
 
-        // Create adaptive rate limiter (learns from throttling)
-        // Learning events are informational - application can subscribe to rateLimiter directly if needed
-        if (config.rateLimits) {
+        // Use shared rate limiter if provided, otherwise create new one
+        // Shared rate limiter allows multiple model instances to coordinate on same quota
+        if (config.sharedRateLimiter) {
+            this.rateLimiter = config.sharedRateLimiter;
+        } else if (config.rateLimits) {
+            // Create adaptive rate limiter (learns from throttling)
+            // Learning events are informational - application can subscribe to rateLimiter directly if needed
             this.rateLimiter = new CombinedRateLimiter(config.rateLimits);
         }
     }

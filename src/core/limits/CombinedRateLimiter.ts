@@ -52,6 +52,9 @@ export interface CombinedCheckResult {
 
 /**
  * Manages both RPM and TPM rate limits
+ *
+ * Can be shared across multiple Model instances to coordinate rate limiting
+ * on a single quota (e.g., multiple agents sharing the same Bedrock account limits)
  */
 export class CombinedRateLimiter {
   private rpmLimiter?: AdaptiveRateLimiter;
