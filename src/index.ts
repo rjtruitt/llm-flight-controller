@@ -20,6 +20,7 @@ export { ITokenCounter } from './core/model/ITokenCounter';
 
 // Rate limiting
 export { CombinedRateLimiter, CombinedLimitConfig } from './core/limits/CombinedRateLimiter';
+export { BottleneckRateLimiter, BottleneckLimitConfig } from './core/limits/BottleneckRateLimiter';
 export { AdaptiveRateLimiter, RateLimitConfig } from './core/limits/AdaptiveRateLimiter';
 export { RateLimit } from './core/limits/RateLimit';
 export { SessionLimit } from './core/limits/SessionLimit';

@@ -12,7 +12,7 @@ import { Model, ModelConfig } from '../../core/model/Model';
 import { ModelResponse } from '../../core/types/Response';
 import { OpenAIContext } from '../../core/types/Context';
 import { BedrockOpenAITranslator } from './BedrockOpenAITranslator';
-import { CombinedRateLimiter, CombinedLimitConfig } from '../../core/limits/CombinedRateLimiter';
+import { BottleneckRateLimiter, BottleneckLimitConfig } from '../../core/limits/BottleneckRateLimiter';
 import { AWSSSOAuth } from '../../auth/AWSSSOAuth';
 import { AWSAuthProvider } from '../../auth/AWSAuthProvider';
 import { IAuthProvider } from '../../auth/IAuthProvider';
@@ -32,11 +32,11 @@ export interface BedrockProviderConfig extends Omit<ModelConfig, 'auth'> {
     /** AWS profile name (optional - for profile-based auth) */
     profile?: string;
 
-    /** Rate limit configuration (optional - learns from throttling if not provided) */
-    rateLimits?: CombinedLimitConfig;
+    /** Rate limit configuration using Bottleneck (RPM/TPM) */
+    rateLimits?: BottleneckLimitConfig;
 
     /** Shared rate limiter instance (optional - for coordinating multiple model instances) */
-    sharedRateLimiter?: CombinedRateLimiter;
+    sharedRateLimiter?: BottleneckRateLimiter;
 }
 
 /**
@@ -48,7 +48,7 @@ export class BedrockProvider extends Model {
     private translator: BedrockOpenAITranslator;
     private modelId: string;
     public readonly awsAuth: IAuthProvider;
-    public readonly rateLimiter?: CombinedRateLimiter;
+    public readonly rateLimiter?: BottleneckRateLimiter;
 
     constructor(config: BedrockProviderConfig) {
         // Choose auth provider based on whether profile is specified
@@ -102,9 +102,8 @@ export class BedrockProvider extends Model {
         if (config.sharedRateLimiter) {
             this.rateLimiter = config.sharedRateLimiter;
         } else if (config.rateLimits) {
-            // Create adaptive rate limiter (learns from throttling)
-            // Learning events are informational - application can subscribe to rateLimiter directly if needed
-            this.rateLimiter = new CombinedRateLimiter(config.rateLimits);
+            // Create Bottleneck rate limiter with configured RPM/TPM limits
+            this.rateLimiter = new BottleneckRateLimiter(config.rateLimits);
         }
     }
 
@@ -114,22 +113,14 @@ export class BedrockProvider extends Model {
     protected async sendRequest(context: OpenAIContext): Promise<ModelResponse> {
         // Estimate tokens for rate limiting
         const estimatedTokens = this.estimateTokens(context);
+        const totalTokens = estimatedTokens.input + estimatedTokens.output;
 
-        // Check rate limits before request
-        if (this.rateLimiter) {
-            const check = await this.rateLimiter.check(estimatedTokens.input + estimatedTokens.output);
+        // Execute request through Bottleneck rate limiter (handles both RPM and TPM)
+        const executeRequest = async () => {
+            // Translate OpenAI → Bedrock format
+            const bedrockRequest = this.translator.fromOpenAI(context);
+            bedrockRequest.modelId = this.modelId;
 
-            if (!check.allowed) {
-                // Wait before proceeding - this is automatic rate limiting
-                await new Promise(resolve => setTimeout(resolve, check.waitMs));
-            }
-        }
-
-        // Translate OpenAI → Bedrock format
-        const bedrockRequest = this.translator.fromOpenAI(context);
-        bedrockRequest.modelId = this.modelId;
-
-        try {
             // Call Bedrock SDK
             const command = new ConverseCommand(bedrockRequest as any);
             const response = await this.client.send(command);
@@ -142,11 +133,16 @@ export class BedrockProvider extends Model {
                 rosettaResponse.metadata.modelId = this.modelId;
             }
 
-            // Update rate limiter with actual tokens used
-            if (this.rateLimiter && rosettaResponse.usage) {
-                await this.rateLimiter.consume(rosettaResponse.usage.totalTokens);
-            }
+            return rosettaResponse;
+        };
 
+        // If rate limiter configured, schedule through Bottleneck
+        // This handles both RPM (request count) and TPM (token count via weight)
+        const rosettaResponse = this.rateLimiter
+            ? await this.rateLimiter.schedule(totalTokens, executeRequest)
+            : await executeRequest();
+
+        try {
             return rosettaResponse;
         } catch (error: any) {
             // Check for auth errors first
@@ -161,16 +157,17 @@ export class BedrockProvider extends Model {
             const errorName = error.name || 'Unknown';
 
             if (errorName === 'ThrottlingException' || error.message?.includes('Too many tokens')) {
-                // Learn from throttling
+                // Bedrock throttled us - adapt rate limiter if enabled
                 if (this.rateLimiter) {
-                    await this.rateLimiter.onThrottled(estimatedTokens.input + estimatedTokens.output);
+                    await this.rateLimiter.adaptOnThrottle(error.message);
                 }
 
                 // Throw RateLimitError so Model.sendMessage() can retry
+                // Bottleneck will use adapted limits on retry
                 throw new RateLimitError(
-                    'Bedrock rate limit exceeded',
+                    'Bedrock rate limit exceeded - request will be retried',
                     { provider: 'bedrock', modelId: this.modelId },
-                    undefined, // No retryAfter from Bedrock (adaptive learning will handle it)
+                    undefined, // No retryAfter from Bedrock
                     error
                 );
             }

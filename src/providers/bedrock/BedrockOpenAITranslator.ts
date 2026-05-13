@@ -125,6 +125,8 @@ export class BedrockOpenAITranslator implements IOpenAITranslator<BedrockRequest
                 temperature: openaiContext.temperature,
                 topP: openaiContext.topP
             },
+            // Enable prompt caching if system prompts exist
+            promptCachingConfiguration: systemPrompts ? { enabled: true } : undefined,
             toolConfig: openaiContext.tools
                 ? {
                       tools: openaiContext.tools.map(tool => ({
@@ -154,7 +156,9 @@ export class BedrockOpenAITranslator implements IOpenAITranslator<BedrockRequest
         const usage: TokenUsage = {
             inputTokens: bedrockResponse.usage.inputTokens,
             outputTokens: bedrockResponse.usage.outputTokens,
-            totalTokens: bedrockResponse.usage.totalTokens
+            totalTokens: bedrockResponse.usage.totalTokens,
+            cacheReadTokens: bedrockResponse.usage.cacheReadInputTokens,
+            cacheWriteTokens: bedrockResponse.usage.cacheCreationInputTokens
         };
 
         // Map Bedrock finish reasons to OpenAI format

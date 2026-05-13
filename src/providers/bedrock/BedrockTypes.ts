@@ -43,6 +43,15 @@ export interface BedrockRequest {
                 };
             };
         }>;
+        toolChoice?: {
+            auto?: {};
+            any?: {};
+            tool?: { name: string };
+        };
+    };
+    // Prompt caching - Bedrock automatically caches based on promptCachingConfiguration
+    promptCachingConfiguration?: {
+        enabled: boolean;
     };
 }
 
@@ -53,11 +62,14 @@ export interface BedrockResponse {
             content: BedrockContent[];
         };
     };
-    stopReason: 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use' | 'content_filtered';
+    stopReason: 'stop' | 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use' | 'content_filtered';
     usage: {
         inputTokens: number;
         outputTokens: number;
         totalTokens: number;
+        // Prompt caching metrics (Anthropic models on Bedrock)
+        cacheReadInputTokens?: number;  // Tokens read from cache (90% discount)
+        cacheCreationInputTokens?: number;  // Tokens written to cache (25% fee)
     };
     metrics?: {
         latencyMs: number;
