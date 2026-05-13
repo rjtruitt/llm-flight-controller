@@ -1,0 +1,66 @@
+{
+  "name": "llm-flight-controller",
+  "version": "1.0.0",
+  "description": "Route, switch, and manage your LLM fleet. Seamlessly transition conversations across any model or provider without losing context.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "keywords": [
+    "llm",
+    "ai",
+    "model-switching",
+    "multi-model",
+    "anthropic",
+    "openai",
+    "bedrock",
+    "google",
+    "gemini",
+    "orchestration",
+    "agent",
+    "context-management"
+  ],
+  "author": "Rob Truitt",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rjtruitt/llm-flight-controller.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rjtruitt/llm-flight-controller/issues"
+  },
+  "homepage": "https://github.com/rjtruitt/llm-flight-controller#readme",
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "clean": "rm -rf dist",
+    "prepublish": "npm run clean && npm run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@copilotkit/aimock": "^1.22.0",
+    "@types/node": "^20.19.41",
+    "@vitest/coverage-v8": "^4.1.6",
+    "typescript": "^5.3.0",
+    "vitest": "^4.1.6"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.95.2",
+    "@aws-sdk/client-bedrock-runtime": "^3.1045.0",
+    "@aws-sdk/client-sso-oidc": "^3.1045.0",
+    "@aws-sdk/credential-providers": "^3.1045.0",
+    "@google/generative-ai": "^0.24.1",
+    "@smithy/shared-ini-file-loader": "^4.5.1",
+    "openai": "^6.37.0",
+    "replicate": "^1.4.0"
+  }
+}

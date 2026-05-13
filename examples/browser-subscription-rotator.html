@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Subscription Rotator - Browser Demo</title>
+    <style>
+        body {
+            font-family: 'Monaco', 'Menlo', monospace;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+
+        h1 {
+            color: #4ec9b0;
+            border-bottom: 2px solid #4ec9b0;
+            padding-bottom: 10px;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .subscription-card {
+            background: #252526;
+            border: 2px solid #3e3e42;
+            border-radius: 8px;
+            padding: 20px;
+            transition: all 0.3s;
+        }
+
+        .subscription-card.active {
+            border-color: #4ec9b0;
+            box-shadow: 0 0 20px rgba(78, 201, 176, 0.3);
+        }
+
+        .subscription-card.cooldown {
+            border-color: #f48771;
+            opacity: 0.6;
+        }
+
+        .subscription-card h3 {
+            margin-top: 0;
+            color: #569cd6;
+        }
+
+        .status {
+            font-size: 14px;
+            margin: 10px 0;
+        }
+
+        .status-label {
+            color: #858585;
+        }
+
+        .status-value {
+            color: #4ec9b0;
+            font-weight: bold;
+        }
+
+        .cooldown-timer {
+            color: #f48771;
+            font-weight: bold;
+        }
+
+        .quota-bar {
+            width: 100%;
+            height: 8px;
+            background: #3e3e42;
+            border-radius: 4px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+
+        .quota-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #f48771, #4ec9b0);
+            transition: width 0.3s;
+        }
+
+        .chat-container {
+            background: #252526;
+            border: 2px solid #3e3e42;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .chat-messages {
+            height: 300px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #1e1e1e;
+            border-radius: 4px;
+        }
+
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+            animation: slideIn 0.3s;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.user {
+            background: #264f78;
+            text-align: right;
+        }
+
+        .message.assistant {
+            background: #1a3a1a;
+        }
+
+        .message.system {
+            background: #3e3e42;
+            font-size: 12px;
+            font-style: italic;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 12px;
+            background: #3e3e42;
+            border: 1px solid #858585;
+            border-radius: 4px;
+            color: #d4d4d4;
+            font-family: inherit;
+            font-size: 14px;
+        }
+
+        button {
+            padding: 12px 24px;
+            background: #4ec9b0;
+            border: none;
+            border-radius: 4px;
+            color: #1e1e1e;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s;
+            font-family: inherit;
+        }
+
+        button:hover {
+            background: #6ddfc5;
+        }
+
+        button:disabled {
+            background: #3e3e42;
+            color: #858585;
+            cursor: not-allowed;
+        }
+
+        .auth-buttons {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+        }
+
+        .auth-button {
+            flex: 1;
+            padding: 10px;
+            background: #264f78;
+            border: 1px solid #569cd6;
+            border-radius: 4px;
+            color: #d4d4d4;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .auth-button:hover {
+            background: #305882;
+        }
+
+        .auth-button.connected {
+            background: #1a3a1a;
+            border-color: #4ec9b0;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin: 20px 0;
+        }
+
+        .stat-card {
+            background: #252526;
+            border: 1px solid #3e3e42;
+            border-radius: 4px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            color: #4ec9b0;
+            font-weight: bold;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #858585;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🛩️ LLM Subscription Rotator - Browser Edition</h1>
+
+    <div class="auth-buttons">
+        <button class="auth-button" id="auth-claude" onclick="authenticateProvider('claude')">
+            🔐 Connect Claude Pro
+        </button>
+        <button class="auth-button" id="auth-chatgpt" onclick="authenticateProvider('chatgpt')">
+            🔐 Connect ChatGPT Plus
+        </button>
+        <button class="auth-button" id="auth-gemini" onclick="authenticateProvider('gemini')">
+            🔐 Connect Gemini Advanced
+        </button>
+    </div>
+
+    <div class="stats">
+        <div class="stat-card">
+            <div class="stat-value" id="total-messages">0</div>
+            <div class="stat-label">Total Messages</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="total-switches">0</div>
+            <div class="stat-label">Model Switches</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="total-tokens">0</div>
+            <div class="stat-label">Total Tokens</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="total-cost">$0.00</div>
+            <div class="stat-label">Total Cost</div>
+        </div>
+    </div>
+
+    <div class="status-grid">
+        <div class="subscription-card" id="card-claude">
+            <h3>☁️ Claude Pro</h3>
+            <div class="status">
+                <span class="status-label">Status:</span>
+                <span class="status-value" id="status-claude">Disconnected</span>
+            </div>
+            <div class="status">
+                <span class="status-label">Requests Left:</span>
+                <span class="status-value" id="quota-claude">—</span>
+            </div>
+            <div class="quota-bar">
+                <div class="quota-bar-fill" id="quota-bar-claude" style="width: 0%"></div>
+            </div>
+            <div class="status">
+                <span class="status-label">Cooldown:</span>
+                <span class="cooldown-timer" id="cooldown-claude">—</span>
+            </div>
+        </div>
+
+        <div class="subscription-card" id="card-chatgpt">
+            <h3>🤖 ChatGPT Plus</h3>
+            <div class="status">
+                <span class="status-label">Status:</span>
+                <span class="status-value" id="status-chatgpt">Disconnected</span>
+            </div>
+            <div class="status">
+                <span class="status-label">Requests Left:</span>
+                <span class="status-value" id="quota-chatgpt">—</span>
+            </div>
+            <div class="quota-bar">
+                <div class="quota-bar-fill" id="quota-bar-chatgpt" style="width: 0%"></div>
+            </div>
+            <div class="status">
+                <span class="status-label">Cooldown:</span>
+                <span class="cooldown-timer" id="cooldown-chatgpt">—</span>
+            </div>
+        </div>
+
+        <div class="subscription-card" id="card-gemini">
+            <h3>✨ Gemini Advanced</h3>
+            <div class="status">
+                <span class="status-label">Status:</span>
+                <span class="status-value" id="status-gemini">Disconnected</span>
+            </div>
+            <div class="status">
+                <span class="status-label">Requests Left:</span>
+                <span class="status-value" id="quota-gemini">—</span>
+            </div>
+            <div class="quota-bar">
+                <div class="quota-bar-fill" id="quota-bar-gemini" style="width: 0%"></div>
+            </div>
+            <div class="status">
+                <span class="status-label">Cooldown:</span>
+                <span class="cooldown-timer" id="cooldown-gemini">—</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="chat-container">
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="input-group">
+            <input
+                type="text"
+                id="user-input"
+                placeholder="Type your message... (subscription will auto-rotate on limits)"
+                onkeypress="handleKeyPress(event)"
+            />
+            <button onclick="sendMessage()" id="send-button">Send</button>
+        </div>
+    </div>
+
+    <script type="module">
+        // In real implementation, these would be imports from llm-flight-controller
+        // import { SubscriptionRotator, BrowserOAuthAuth, AnthropicModel, OpenAIModel, GeminiModel } from 'llm-flight-controller';
+
+        // Simulated state for demo
+        const state = {
+            subscriptions: {
+                claude: {
+                    connected: false,
+                    quotaMax: 50,
+                    quotaRemaining: 50,
+                    cooldownUntil: null,
+                    auth: null,
+                    model: null
+                },
+                chatgpt: {
+                    connected: false,
+                    quotaMax: 40,
+                    quotaRemaining: 40,
+                    cooldownUntil: null,
+                    auth: null,
+                    model: null
+                },
+                gemini: {
+                    connected: false,
+                    quotaMax: 60,
+                    quotaRemaining: 60,
+                    cooldownUntil: null,
+                    auth: null,
+                    model: null
+                }
+            },
+            currentProvider: null,
+            stats: {
+                totalMessages: 0,
+                totalSwitches: 0,
+                totalTokens: 0,
+                totalCost: 0
+            }
+        };
+
+        // Simulated authentication (in real app, this opens OAuth popup)
+        window.authenticateProvider = async function(provider) {
+            addSystemMessage(`🔐 Opening OAuth popup for ${provider.toUpperCase()}...`);
+
+            // Simulate OAuth flow
+            await sleep(1000);
+
+            // In real implementation:
+            // const auth = new BrowserOAuthAuth({
+            //     authUrl: getAuthUrl(provider),
+            //     tokenUrl: getTokenUrl(provider),
+            //     clientId: getClientId(provider),
+            //     scopes: ['chat']
+            // });
+            // await auth.authenticate(); // Opens popup, handles callback
+            // const model = createModel(provider, auth);
+
+            state.subscriptions[provider].connected = true;
+            state.subscriptions[provider].auth = { token: 'mock-token-' + provider };
+
+            document.getElementById(`auth-${provider}`).classList.add('connected');
+            document.getElementById(`auth-${provider}`).textContent = `✅ ${provider.toUpperCase()} Connected`;
+
+            updateStatus(provider);
+            addSystemMessage(`✅ ${provider.toUpperCase()} authenticated successfully!`);
+
+            // Set as current if first connection
+            if (!state.currentProvider) {
+                state.currentProvider = provider;
+                updateActiveCard();
+                addSystemMessage(`🚀 Using ${provider.toUpperCase()} as primary provider`);
+            }
+        };
+
+        // Simulated message sending with auto-rotation
+        window.sendMessage = async function() {
+            const input = document.getElementById('user-input');
+            const message = input.value.trim();
+
+            if (!message) return;
+
+            // Check if any subscription is connected
+            const connectedProvider = findAvailableProvider();
+            if (!connectedProvider) {
+                addSystemMessage('❌ Please connect at least one subscription first!');
+                return;
+            }
+
+            input.value = '';
+            input.disabled = true;
+            document.getElementById('send-button').disabled = true;
+
+            addUserMessage(message);
+
+            try {
+                // Try current provider
+                const response = await sendWithRotation(message);
+                addAssistantMessage(response.text, response.provider);
+
+                // Update stats
+                state.stats.totalMessages++;
+                state.stats.totalTokens += response.tokens;
+                state.stats.totalCost += response.cost;
+                updateStatsDisplay();
+
+            } catch (error) {
+                addSystemMessage(`❌ Error: ${error.message}`);
+            } finally {
+                input.disabled = false;
+                document.getElementById('send-button').disabled = false;
+                input.focus();
+            }
+        };
+
+        // Core rotation logic
+        async function sendWithRotation(message) {
+            const maxAttempts = 10;
+            let attempts = 0;
+
+            while (attempts < maxAttempts) {
+                const provider = state.currentProvider;
+                const sub = state.subscriptions[provider];
+
+                // Check if quota exhausted
+                if (sub.quotaRemaining <= 0) {
+                    addSystemMessage(`⚠️ ${provider.toUpperCase()} quota exhausted!`);
+                    await handleSessionLimitExceeded(provider);
+                    attempts++;
+                    continue;
+                }
+
+                addSystemMessage(`💬 Sending to ${provider.toUpperCase()}...`);
+
+                // Simulate API call
+                await sleep(800);
+
+                // Simulate random session limit hit (10% chance)
+                const hitLimit = Math.random() < 0.1;
+
+                if (hitLimit) {
+                    addSystemMessage(`⚠️ ${provider.toUpperCase()} hit session limit!`);
+                    await handleSessionLimitExceeded(provider);
+                    attempts++;
+                    continue;
+                }
+
+                // Success! Consume quota
+                sub.quotaRemaining--;
+                updateStatus(provider);
+
+                // Simulate response
+                const tokens = Math.floor(Math.random() * 500) + 100;
+                const cost = tokens * 0.000015; // ~$0.015 per 1K tokens
+
+                // Check if approaching limit
+                if (sub.quotaRemaining < 5) {
+                    addSystemMessage(`📊 Only ${sub.quotaRemaining} requests left on ${provider.toUpperCase()}`);
+                }
+
+                return {
+                    text: simulateResponse(message, provider),
+                    provider: provider,
+                    tokens: tokens,
+                    cost: cost
+                };
+            }
+
+            throw new Error('All subscriptions exhausted!');
+        }
+
+        // Handle session limit exceeded - find next provider
+        async function handleSessionLimitExceeded(provider) {
+            const sub = state.subscriptions[provider];
+
+            // Mark cooldown (Claude: 3h, ChatGPT: 3h, Gemini: until midnight)
+            const cooldownHours = provider === 'gemini' ? 8 : 3;
+            sub.cooldownUntil = new Date(Date.now() + cooldownHours * 60 * 60 * 1000);
+            sub.quotaRemaining = 0;
+
+            updateStatus(provider);
+            addSystemMessage(`⏰ ${provider.toUpperCase()} on cooldown until ${sub.cooldownUntil.toLocaleTimeString()}`);
+
+            // Find next available provider
+            const nextProvider = findAvailableProvider();
+
+            if (!nextProvider) {
+                addSystemMessage('😴 All subscriptions exhausted! Waiting for cooldown reset...');
+                throw new Error('All subscriptions exhausted');
+            }
+
+            // Switch provider
+            const oldProvider = state.currentProvider;
+            state.currentProvider = nextProvider;
+            state.stats.totalSwitches++;
+
+            updateActiveCard();
+            addSystemMessage(`🔄 Switching: ${oldProvider.toUpperCase()} → ${nextProvider.toUpperCase()}`);
+            addSystemMessage(`✨ Context automatically translated via Rosetta Stone!`);
+
+            await sleep(500);
+        }
+
+        // Find next available provider (not on cooldown)
+        function findAvailableProvider() {
+            const providers = ['claude', 'chatgpt', 'gemini'];
+            const now = new Date();
+
+            // Try current provider first
+            if (state.currentProvider) {
+                const current = state.subscriptions[state.currentProvider];
+                if (current.connected && (!current.cooldownUntil || current.cooldownUntil < now)) {
+                    return state.currentProvider;
+                }
+            }
+
+            // Try others
+            for (const provider of providers) {
+                const sub = state.subscriptions[provider];
+                if (sub.connected && (!sub.cooldownUntil || sub.cooldownUntil < now)) {
+                    return provider;
+                }
+            }
+
+            return null;
+        }
+
+        // Update visual status
+        function updateStatus(provider) {
+            const sub = state.subscriptions[provider];
+            const statusEl = document.getElementById(`status-${provider}`);
+            const quotaEl = document.getElementById(`quota-${provider}`);
+            const quotaBarEl = document.getElementById(`quota-bar-${provider}`);
+            const cooldownEl = document.getElementById(`cooldown-${provider}`);
+            const cardEl = document.getElementById(`card-${provider}`);
+
+            if (!sub.connected) {
+                statusEl.textContent = 'Disconnected';
+                quotaEl.textContent = '—';
+                quotaBarEl.style.width = '0%';
+                cooldownEl.textContent = '—';
+                return;
+            }
+
+            const now = new Date();
+            const onCooldown = sub.cooldownUntil && sub.cooldownUntil > now;
+
+            if (onCooldown) {
+                statusEl.textContent = '⏰ Cooldown';
+                statusEl.style.color = '#f48771';
+                cardEl.classList.add('cooldown');
+
+                const minutesLeft = Math.ceil((sub.cooldownUntil - now) / 60000);
+                cooldownEl.textContent = `${minutesLeft}m remaining`;
+            } else {
+                statusEl.textContent = '✅ Available';
+                statusEl.style.color = '#4ec9b0';
+                cardEl.classList.remove('cooldown');
+                cooldownEl.textContent = '—';
+            }
+
+            quotaEl.textContent = `${sub.quotaRemaining} / ${sub.quotaMax}`;
+            const percentage = (sub.quotaRemaining / sub.quotaMax) * 100;
+            quotaBarEl.style.width = percentage + '%';
+        }
+
+        function updateActiveCard() {
+            document.querySelectorAll('.subscription-card').forEach(card => {
+                card.classList.remove('active');
+            });
+
+            if (state.currentProvider) {
+                document.getElementById(`card-${state.currentProvider}`).classList.add('active');
+            }
+        }
+
+        function updateStatsDisplay() {
+            document.getElementById('total-messages').textContent = state.stats.totalMessages;
+            document.getElementById('total-switches').textContent = state.stats.totalSwitches;
+            document.getElementById('total-tokens').textContent = state.stats.totalTokens.toLocaleString();
+            document.getElementById('total-cost').textContent = '$' + state.stats.totalCost.toFixed(4);
+        }
+
+        // Chat UI helpers
+        function addUserMessage(text) {
+            const div = document.createElement('div');
+            div.className = 'message user';
+            div.textContent = '👤 You: ' + text;
+            document.getElementById('chat-messages').appendChild(div);
+            scrollToBottom();
+        }
+
+        function addAssistantMessage(text, provider) {
+            const div = document.createElement('div');
+            div.className = 'message assistant';
+            const emoji = provider === 'claude' ? '☁️' : provider === 'chatgpt' ? '🤖' : '✨';
+            div.textContent = `${emoji} ${provider.toUpperCase()}: ${text}`;
+            document.getElementById('chat-messages').appendChild(div);
+            scrollToBottom();
+        }
+
+        function addSystemMessage(text) {
+            const div = document.createElement('div');
+            div.className = 'message system';
+            div.textContent = '🔧 ' + text;
+            document.getElementById('chat-messages').appendChild(div);
+            scrollToBottom();
+        }
+
+        function scrollToBottom() {
+            const messages = document.getElementById('chat-messages');
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        window.handleKeyPress = function(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        };
+
+        function simulateResponse(message, provider) {
+            const responses = [
+                "That's a great question! Let me help you with that.",
+                "I understand what you're asking. Here's my perspective.",
+                "Based on your input, I'd suggest considering this approach.",
+                "Interesting! This relates to several important concepts.",
+                "Let me break this down for you in a clear way."
+            ];
+            return responses[Math.floor(Math.random() * responses.length)];
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        // Update cooldown timers every second
+        setInterval(() => {
+            ['claude', 'chatgpt', 'gemini'].forEach(provider => {
+                updateStatus(provider);
+            });
+        }, 1000);
+
+        // Initial message
+        addSystemMessage('🚀 LLM Subscription Rotator initialized!');
+        addSystemMessage('📱 Connect your subscriptions to start chatting.');
+        addSystemMessage('💡 The rotator will automatically switch between providers as each hits session limits.');
+    </script>
+</body>
+</html>
